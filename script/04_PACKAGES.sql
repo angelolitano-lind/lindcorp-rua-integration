@@ -187,17 +187,65 @@ END LND_0005_PKG_ORCH;
 
 CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_ORCH AS
     PROCEDURE DISPATCH_JOB IS
-        v_exec_id   NUMBER;
-        v_read      NUMBER := 0;
-        v_success   NUMBER := 0;
-        v_failed    NUMBER := 0;
+        v_exec_id       NUMBER;
+        v_read          NUMBER := 0;
+        v_success       NUMBER := 0;
+        v_failed        NUMBER := 0;
+        
+        v_workspace     VARCHAR2(100);
+        v_workspace_id  NUMBER;
+        v_app_id        NUMBER;
     BEGIN
+        BEGIN
+            SELECT APEX_WORKSPACE 
+              INTO v_workspace
+              FROM LND_0005_CFG_CONNECTION
+             WHERE ENVIRONMENT_CODE = 'PRD' 
+               AND CONNECTION_CODE  = 'MFCS_PO_RECEIPTS_API'
+               AND ACTIVE_IND       = 'Y'
+               AND ROWNUM = 1;
+        EXCEPTION
+            WHEN OTHERS THEN
+                v_workspace := 'MY_WORKSPACE';
+        END;
+
+        v_workspace_id := APEX_UTIL.FIND_SECURITY_GROUP_ID(p_workspace => v_workspace);
+        IF v_workspace_id IS NOT NULL THEN
+            APEX_UTIL.SET_SECURITY_GROUP_ID(p_security_group_id => v_workspace_id);
+        END IF;
+
+        BEGIN
+            SELECT APPLICATION_ID
+              INTO v_app_id
+              FROM APEX_APPLICATIONS
+             WHERE WORKSPACE = v_workspace
+               AND ROWNUM = 1;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_app_id := 100;
+        END;
+
+        APEX_SESSION.CREATE_SESSION(
+            p_app_id   => v_app_id,
+            p_page_id  => 1,
+            p_username => 'SCHEDULER_JOB'
+        );
+
         LND_0005_PKG_CTRL.START_EXEC('LND_0005_JOB_DISPATCH', v_exec_id);
         LND_0005_PKG_EXTRACT.INGEST_FROM_SRC(v_read);
         LND_0005_PKG_DISPATCH.DISPATCH_BATCH(v_success, v_failed);
         LND_0005_PKG_CTRL.END_EXEC(v_exec_id, v_read, v_success, v_failed);
+
+        APEX_SESSION.DELETE_SESSION;
+
     EXCEPTION
         WHEN OTHERS THEN
+            BEGIN
+                APEX_SESSION.DELETE_SESSION;
+            EXCEPTION
+                WHEN OTHERS THEN NULL;
+            END;
+
             LND_0005_PKG_CTRL.END_EXEC(v_exec_id, v_read, v_success, v_failed, SQLERRM);
             RAISE;
     END DISPATCH_JOB;
