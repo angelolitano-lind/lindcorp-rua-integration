@@ -6,7 +6,7 @@ SELECT
     -- location: Number
     TO_NUMBER(h.RTL_LOC_ID) AS LOCATION,
     
-    -- orderNo: Number (Extraído directamente de las notas rds_trn_trans_notes.NOTE)
+    -- orderNo: Extraído directamente de las notas rds_trn_trans_notes.NOTE
     TO_NUMBER(
         REGEXP_REPLACE(
             (
@@ -27,18 +27,17 @@ SELECT
         )
     ) AS ORDER_NO,
     
-    -- referenceDocumentNo: Number (Máximo 8 dígitos)
+    -- referenceDocumentNo: Number (Máximo 8 dígitos para cumplir restricción < 10 digits en MFCS)
     TO_NUMBER(SUBSTR(REGEXP_REPLACE(h.INVCTL_DOCUMENT_ID, '[^0-9]', ''), -8)) AS REF_DOC_NO,
     
     -- asnNo: String
     'PO_' || NVL(h.PO_REF_NBR, h.INVCTL_DOCUMENT_ID) AS ASN_NO,
     
-    -- receiptDetails: Collection of Object
+    -- receiptDetails: Filtra ÚNICAMENTE las líneas asociadas a las transacciones con razón 1010 o 1011
     (
         SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
                 'item'                    VALUE TO_CHAR(d.INVENTORY_ITEM_ID),
-                -- Se remueve ABS() para mantener el valor negativo original si aplica
                 'receivedQuantity'        VALUE NVL(d.POSTED_COUNT, NVL(d.UNIT_COUNT, 0)),
                 'shippedQuantity'         VALUE NVL(d.EXPECTED_COUNT, 0),
                 'receiptTransactionType'  VALUE 'A',
@@ -54,6 +53,16 @@ SELECT
         WHERE d.INVCTL_DOCUMENT_ID = h.INVCTL_DOCUMENT_ID
           AND d.ORGANIZATION_ID    = h.ORGANIZATION_ID
           AND d.RTL_LOC_ID         = h.RTL_LOC_ID
+          -- Condición clave: Solo toma las líneas cuya transacción corresponda a razón 1010 o 1011
+          AND EXISTS (
+              SELECT 1 
+                FROM XO_RDS.rds_inv_invctl_trans t
+               WHERE t.INVCTL_DOCUMENT_ID = d.INVCTL_DOCUMENT_ID
+                 AND t.ORGANIZATION_ID    = d.ORGANIZATION_ID
+                 AND t.RTL_LOC_ID         = d.RTL_LOC_ID
+                 AND t.TRANS_SEQ          = d.LINEITM_TRANS_SEQ
+                 AND t.INVCTL_TRANS_REASCODE IN ('1010', '1011')
+          )
     ) AS RECEIPT_DETAILS_JSON
 FROM XO_RDS.rds_inv_invctl_document h
 WHERE h.STATUS_CODE = 'CLOSED'
@@ -63,6 +72,6 @@ WHERE h.STATUS_CODE = 'CLOSED'
        WHERE t.INVCTL_DOCUMENT_ID    = h.INVCTL_DOCUMENT_ID
          AND t.ORGANIZATION_ID       = h.ORGANIZATION_ID
          AND t.RTL_LOC_ID            = h.RTL_LOC_ID
-         AND t.INVCTL_TRANS_REASCODE = '1010'
+         AND t.INVCTL_TRANS_REASCODE IN ('1010', '1011')
   );
 /
