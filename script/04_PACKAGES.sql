@@ -49,10 +49,10 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_EXTRACT AS
     PROCEDURE INGEST_FROM_SRC(p_read_count OUT NUMBER) IS
         v_payload CLOB;
         v_max_retries NUMBER := TO_NUMBER(NVL(LND_0005_PKG_CTRL.GET_PARAM('MAX_RETRIES'), '5'));
+        v_order_location NUMBER;
     BEGIN
         p_read_count := 0;
         FOR r IN (SELECT * FROM LND_0005_VW_PO_RECEIPTS_SRC) LOOP
-            p_read_count := p_read_count + 1;
 
             SELECT JSON_OBJECT(
                 'collectionSize' VALUE 1,
@@ -73,6 +73,38 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_EXTRACT AS
             )
             INTO v_payload
             FROM DUAL;
+
+            BEGIN
+                SELECT RTL_LOC_ID 
+                  INTO v_order_location
+                  FROM XO_RDS.rds_inv_invctl_document
+                 WHERE INVCTL_DOCUMENT_ID = TO_CHAR(r.ORDER_NO)
+                   AND RTL_LOC_ID         = r.LOCATION
+                   AND ROWNUM = 1;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    INSERT INTO LND_0005_OBX_PO_RECEIPTS (
+                        BUSINESS_KEY, PAYLOAD_JSON, PROCESS_STATUS, ATTEMPT_COUNT, MAX_ATTEMPTS, 
+                        NEXT_ATTEMPT_AT, LAST_ERROR_CODE, LAST_ERROR_MSG
+                    )
+                    SELECT 
+                        r.BUSINESS_KEY, 
+                        v_payload,
+                        'D', 
+                        v_max_retries, 
+                        v_max_retries, 
+                        SYSTIMESTAMP, 
+                        '-20002', 
+                        'Error: La tienda no coincide o la orden de compra no existe'
+                    FROM DUAL
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM LND_0005_OBX_PO_RECEIPTS WHERE BUSINESS_KEY = r.BUSINESS_KEY
+                    );
+
+                    CONTINUE;
+            END;
+
+            p_read_count := p_read_count + 1;
 
             INSERT INTO LND_0005_OBX_PO_RECEIPTS (
                 BUSINESS_KEY, PAYLOAD_JSON, PROCESS_STATUS, ATTEMPT_COUNT, MAX_ATTEMPTS, NEXT_ATTEMPT_AT

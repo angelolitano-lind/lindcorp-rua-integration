@@ -1,6 +1,6 @@
 BEGIN
   DBMS_SCHEDULER.CREATE_JOB (
-    job_name        => 'LND_0005_JOB_5MIN_DISPATCH',
+    job_name        => 'LND_0005_JOB_DISPATCH',
     job_type        => 'STORED_PROCEDURE',
     job_action      => 'LND_0005_PKG_ORCH.DISPATCH_JOB',
     start_date      => SYSTIMESTAMP,
