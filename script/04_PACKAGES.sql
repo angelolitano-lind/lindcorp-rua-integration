@@ -237,13 +237,7 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_DISPATCH AS
 
                     UPDATE LND_0005_OBX_PO_RECEIPTS
                        SET ATTEMPT_COUNT   = ATTEMPT_COUNT + 1,
-                           -- Si es error de cliente/datos (4xx) o alcanzó el máximo de intentos, pasa a 'D' (Discarded)
-                           -- Si es error de red/servidor y le quedan intentos, se mantiene en 'E' (Error reintentable)
-                           PROCESS_STATUS  = CASE 
-                                               WHEN NOT v_is_retryable THEN 'D'
-                                               WHEN ATTEMPT_COUNT + 1 >= MAX_ATTEMPTS THEN 'D'
-                                               ELSE 'E' 
-                                             END,
+                           PROCESS_STATUS  = CASE WHEN ATTEMPT_COUNT + 1 >= MAX_ATTEMPTS THEN 'D' ELSE 'E' END,
                            NEXT_ATTEMPT_AT = SYSTIMESTAMP + NUMTODSINTERVAL(POWER(2, ATTEMPT_COUNT + 1) * 5, 'MINUTE'),
                            LAST_ERROR_CODE = v_err_code,
                            LAST_ERROR_MSG  = v_err_msg,
