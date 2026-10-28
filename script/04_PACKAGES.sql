@@ -47,8 +47,8 @@ END LND_0005_PKG_EXTRACT;
 
 CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_EXTRACT AS
     PROCEDURE INGEST_FROM_SRC(p_read_count OUT NUMBER) IS
-        v_payload CLOB;
-        v_max_retries NUMBER := TO_NUMBER(NVL(LND_0005_PKG_CTRL.GET_PARAM('MAX_RETRIES'), '5'));
+        v_payload        CLOB;
+        v_max_retries    NUMBER := TO_NUMBER(NVL(LND_0005_PKG_CTRL.GET_PARAM('MAX_RETRIES'), '5'));
         v_order_location NUMBER;
         v_receive_date   DATE;
     BEGIN
@@ -66,11 +66,16 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_EXTRACT AS
                                 'orderNo'              VALUE r.ORDER_NO,
                                 'referenceDocumentNo' VALUE r.REF_DOC_NO,
                                 'asnNo'                VALUE r.ASN_NO,
-                                'receiptDetails'       VALUE JSON_QUERY(r.RECEIPT_DETAILS_JSON, '$')
+                                'receiptDetails'       VALUE JSON_QUERY(r.RECEIPT_DETAILS_JSON, '$' RETURNING CLOB)
+                                RETURNING CLOB
                             )
+                            RETURNING CLOB
                         )
+                        RETURNING CLOB
                     )
+                    RETURNING CLOB
                 )
+                RETURNING CLOB
             )
             INTO v_payload
             FROM DUAL;
@@ -152,6 +157,8 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_EXTRACT AS
 END LND_0005_PKG_EXTRACT;
 /
 
+
+-- PENDIENTE EJECUTAR EN PROD
 CREATE OR REPLACE PACKAGE LND_0005_PKG_DISPATCH AS
     PROCEDURE DISPATCH_BATCH(p_success_count OUT NUMBER, p_failed_count OUT NUMBER);
 END LND_0005_PKG_DISPATCH;
@@ -230,7 +237,13 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_DISPATCH AS
 
                     UPDATE LND_0005_OBX_PO_RECEIPTS
                        SET ATTEMPT_COUNT   = ATTEMPT_COUNT + 1,
-                           PROCESS_STATUS  = CASE WHEN ATTEMPT_COUNT + 1 >= MAX_ATTEMPTS THEN 'D' ELSE 'E' END,
+                           -- Si es error de cliente/datos (4xx) o alcanzó el máximo de intentos, pasa a 'D' (Discarded)
+                           -- Si es error de red/servidor y le quedan intentos, se mantiene en 'E' (Error reintentable)
+                           PROCESS_STATUS  = CASE 
+                                               WHEN NOT v_is_retryable THEN 'D'
+                                               WHEN ATTEMPT_COUNT + 1 >= MAX_ATTEMPTS THEN 'D'
+                                               ELSE 'E' 
+                                             END,
                            NEXT_ATTEMPT_AT = SYSTIMESTAMP + NUMTODSINTERVAL(POWER(2, ATTEMPT_COUNT + 1) * 5, 'MINUTE'),
                            LAST_ERROR_CODE = v_err_code,
                            LAST_ERROR_MSG  = v_err_msg,
