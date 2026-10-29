@@ -6,7 +6,7 @@ SELECT
     -- location: Number
     TO_NUMBER(h.RTL_LOC_ID) AS LOCATION,
     
-    -- orderNo: Extrae solo dígitos y toma hasta 12 dígitos máximo para evitar desbordamiento
+    -- orderNo: Extrae solo dígitos y toma hasta 12 dígitos máximo
     SUBSTR(
         REGEXP_REPLACE(
             (
@@ -34,7 +34,7 @@ SELECT
     -- asnNo: String
     'PO_' || NVL(h.PO_REF_NBR, h.INVCTL_DOCUMENT_ID) AS ASN_NO,
     
-    -- receiptDetails: Mantenemos el RETURNING CLOB
+    -- receiptDetails: Retorno explicitado como CLOB
     (
         SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -68,6 +68,7 @@ SELECT
     ) AS RECEIPT_DETAILS_JSON
 FROM XO_RDS.rds_inv_invctl_document h
 WHERE h.STATUS_CODE = 'CLOSED'
+  AND TRUNC(h.CREATE_DATE) >= TRUNC(SYSDATE) - 1
   AND EXISTS (
       SELECT 1 
         FROM XO_RDS.rds_inv_invctl_trans t
@@ -77,7 +78,6 @@ WHERE h.STATUS_CODE = 'CLOSED'
          AND t.INVCTL_TRANS_REASCODE IN ('1010', '1011')
   );
 /
-
 
 
 -- NUEVA VISTA PARA CORREOS
