@@ -115,7 +115,7 @@ CREATE OR REPLACE PACKAGE BODY LND_0005_PKG_EXTRACT AS
                   INTO v_receive_date
                   FROM rds_wv_shipment s
                  WHERE s.ORDER_NO = TO_CHAR(r.ORDER_NO)
-                   AND TRUNC(s.RECEIVE_DATE) = TRUNC(r.SOURCE_CHANGE_DATETIME)
+                   AND TRUNC(s.RECEIVE_DATE) BETWEEN TRUNC(r.SOURCE_CHANGE_DATETIME) AND TRUNC(r.SOURCE_CHANGE_DATETIME) + 1
                    AND ROWNUM = 1;
             EXCEPTION
                 WHEN NO_DATA_FOUND THEN
