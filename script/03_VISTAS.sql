@@ -82,36 +82,61 @@ WHERE h.STATUS_CODE = 'CLOSED'
 
 -- NUEVA VISTA PARA CORREOS
 
-CREATE OR REPLACE VIEW LND_0005_VW_MAIL_NOTIFICATIONS AS
+CREATE OR REPLACE VIEW "LND_0005_VW_MAIL_NOTIFICATIONS" (
+    "OUTBOX_ID", 
+    "BUSINESS_KEY", 
+    "PROCESS_STATUS", 
+    "LAST_ERROR_CODE", 
+    "LAST_ERROR_MSG", 
+    "LOCATION", 
+    "ORDER_NO", 
+    "ASN_NO", 
+    "SHIPMENT_RECEIVE_DATE", 
+    "ITEM_ID", 
+    "RECEIVED_QTY", 
+    "ADJUSTMENT_RECEIPT_DATE", 
+    "EXT_REF_NO"
+) AS 
 SELECT 
     o.OUTBOX_ID,
     o.BUSINESS_KEY,
     o.PROCESS_STATUS,
     o.LAST_ERROR_CODE,
     o.LAST_ERROR_MSG,
-    d.location,
-    d.order_no,
-    d.asn_no,
+    h.location,
+    h.order_no,
+    h.asn_no,
     s.RECEIVE_DATE AS SHIPMENT_RECEIVE_DATE,
     d.item_id,
     d.received_qty,
-    d.receipt_date AS ADJUSTMENT_RECEIPT_DATE,
+    
+    NVL(
+        d.receipt_date, 
+        TO_CHAR(doc.CREATE_DATE, 'YYYY-MM-DD')
+    ) AS ADJUSTMENT_RECEIPT_DATE,
+    
     d.ext_ref_no
+
 FROM LND_0005_OBX_PO_RECEIPTS o
+LEFT OUTER JOIN XO_RDS.rds_inv_invctl_document doc
+             ON doc.INVCTL_DOCUMENT_ID = SUBSTR(o.BUSINESS_KEY, INSTR(o.BUSINESS_KEY, '|') + 1)
 LEFT OUTER JOIN JSON_TABLE(
     o.PAYLOAD_JSON, '$.items[0].receipts[0]'
     COLUMNS (
         location     NUMBER        PATH '$.location',
         order_no     NUMBER        PATH '$.orderNo',
         ref_doc_no   NUMBER        PATH '$.referenceDocumentNo',
-        asn_no       VARCHAR2(100) PATH '$.asnNo',
-        NESTED PATH '$.receiptDetails[*]' COLUMNS (
-            item_id         VARCHAR2(50)  PATH '$.item',
-            received_qty    NUMBER        PATH '$.receivedQuantity',
-            receipt_date    VARCHAR2(20)  PATH '$.receiptDate',
-            ext_ref_no      VARCHAR2(100) PATH '$.externalReferenceNo'
-        )
+        asn_no       VARCHAR2(100) PATH '$.asnNo'
+    )
+) h ON 1 = 1
+LEFT OUTER JOIN JSON_TABLE(
+    o.PAYLOAD_JSON, '$.items[0].receipts[0].receiptDetails[*]'
+    COLUMNS (
+        item_id         VARCHAR2(50)  PATH '$.item',
+        received_qty    NUMBER        PATH '$.receivedQuantity',
+        receipt_date    VARCHAR2(20)  PATH '$.receiptDate',
+        ext_ref_no      VARCHAR2(100) PATH '$.externalReferenceNo'
     )
 ) d ON 1 = 1
 LEFT OUTER JOIN rds_wv_shipment s 
-             ON s.ORDER_NO = TO_CHAR(d.order_no);
+             ON s.ORDER_NO = TO_CHAR(h.order_no);
